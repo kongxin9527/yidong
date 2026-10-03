@@ -16,6 +16,7 @@ from collections import deque
 
 BINANCE_REST = "https://fapi.binance.com"
 
+# 主动订阅模式
 WS_URL = "wss://fstream.binance.com/market/stream"
 
 
@@ -94,21 +95,15 @@ monitor_symbols = []
 price_cache = {}
 
 
-
 # 成交额缓存
-
 volume_cache = {}
 
 
-
 # 报警时间缓存
-
 last_alert_time = {}
 
 
-
 # WS状态
-
 ws_status = {}
 
 
@@ -275,7 +270,7 @@ async def get_volume_filter():
             if volume >= MIN_VOLUME:
 
 
-                symbol = item["symbol"].lower()
+                symbol=item["symbol"].lower()
 
 
                 result.append(symbol)
@@ -406,12 +401,6 @@ def save_price(symbol,price):
 
 
         price_cache[symbol].popleft()
-
-
-
-
-
-
 # ==================================================
 # 计算5分钟涨幅
 # ==================================================
@@ -425,35 +414,34 @@ def get_5m_change(symbol):
 
 
 
-    data=price_cache[symbol]
+    data = price_cache[symbol]
 
 
 
-    if len(data)<2:
+    if len(data) < 2:
 
         return None
 
 
 
-    now_time,now_price=data[-1]
+    now_time, now_price = data[-1]
+
+
+    target = now_time - 300
 
 
 
-    target=now_time-300
+    old_price = None
 
 
 
-    old_price=None
+    for t, p in data:
 
 
-
-    for t,p in data:
-
-
-        if t>=target:
+        if t >= target:
 
 
-            old_price=p
+            old_price = p
 
             break
 
@@ -465,15 +453,15 @@ def get_5m_change(symbol):
 
 
 
-    change=(
+    change = (
 
-        now_price-old_price
+        now_price - old_price
 
-    )/old_price*100
+    ) / old_price * 100
 
 
 
-    return change,now_price
+    return change, now_price
 
 
 
@@ -487,7 +475,7 @@ def get_5m_change(symbol):
 def check_signal(symbol):
 
 
-    result=get_5m_change(symbol)
+    result = get_5m_change(symbol)
 
 
 
@@ -497,7 +485,7 @@ def check_signal(symbol):
 
 
 
-    change,price=result
+    change, price = result
 
 
 
@@ -507,12 +495,11 @@ def check_signal(symbol):
 
 
 
-
-    now=time.time()
-
+    now = time.time()
 
 
-    last=last_alert_time.get(
+
+    last = last_alert_time.get(
 
         symbol,
 
@@ -522,19 +509,18 @@ def check_signal(symbol):
 
 
 
-    if now-last < ALERT_COOLDOWN:
+    if now - last < ALERT_COOLDOWN:
 
 
         return
 
 
 
-    last_alert_time[symbol]=now
+    last_alert_time[symbol] = now
 
 
 
-
-    volume=volume_cache.get(
+    volume = volume_cache.get(
 
         symbol,
 
@@ -544,8 +530,7 @@ def check_signal(symbol):
 
 
 
-
-    message=f"""
+    message = f"""
 
 🚀 <b>Binance多头异动</b>
 
@@ -594,32 +579,21 @@ def check_signal(symbol):
 
 
 
+
 # ==================================================
-# WebSocket
+# WebSocket 主动SUBSCRIBE
 # ==================================================
 
-async def ws_group(symbols,group_id):
+async def ws_group(symbols, group_id):
 
 
-    streams="/".join(
+    streams = [
 
-        [
+        f"{s}@kline_1m"
 
-            f"{s}@kline_1m"
+        for s in symbols
 
-            for s in symbols
-
-        ]
-
-    )
-
-
-
-    url=(
-
-        f"{WS_URL}?streams={streams}"
-
-    )
+    ]
 
 
 
@@ -639,13 +613,14 @@ async def ws_group(symbols,group_id):
 
             async with websockets.connect(
 
-                url,
+                WS_URL,
 
                 ping_interval=None,
 
                 close_timeout=10
 
             ) as ws:
+
 
 
                 logging.info(
@@ -656,37 +631,117 @@ async def ws_group(symbols,group_id):
 
 
 
-                ws_status[group_id]={
+                # =========================
+                # 主动发送订阅
+                # =========================
 
-                    "connected":True,
+                subscribe_message = {
 
-                    "count":0,
 
-                    "last":time.time()
+                    "method":
+
+                    "SUBSCRIBE",
+
+
+                    "params":
+
+                    streams,
+
+
+                    "id":
+
+                    group_id
 
                 }
 
 
 
+                await ws.send(
+
+                    json.dumps(
+
+                        subscribe_message
+
+                    )
+
+                )
+
+
+
+                logging.info(
+
+                    f"WS-{group_id}发送订阅 {len(streams)}个"
+
+                )
+
+
+
+                ws_status[group_id] = {
+
+
+                    "connected": True,
+
+
+                    "count": 0,
+
+
+                    "last": time.time()
+
+                }
+
+
 
                 async for msg in ws:
 
+
+                    # 调试原始数据
+
                     logging.info(
+
                         f"WS-{group_id} RAW:{msg[:200]}"
+
                     )
-                    data=json.loads(msg)
 
 
 
-                    k=data["data"]["k"]
+                    data = json.loads(msg)
 
 
 
-                    symbol=k["s"].lower()
+                    # =========================
+                    # 订阅确认
+                    # =========================
+
+                    if "result" in data:
+
+
+                        logging.info(
+
+                            f"WS-{group_id}订阅确认:{data}"
+
+                        )
+
+
+                        continue
 
 
 
-                    price=float(
+                    if "data" not in data:
+
+
+                        continue
+
+
+
+                    k = data["data"]["k"]
+
+
+
+                    symbol = k["s"].lower()
+
+
+
+                    price = float(
 
                         k["c"]
 
@@ -704,10 +759,11 @@ async def ws_group(symbols,group_id):
 
 
 
-                    ws_status[group_id]["count"]+=1
+                    ws_status[group_id]["count"] += 1
 
 
-                    ws_status[group_id]["last"]=time.time()
+
+                    ws_status[group_id]["last"] = time.time()
 
 
 
@@ -725,13 +781,17 @@ async def ws_group(symbols,group_id):
             )
 
 
-            ws_status[group_id]={
 
-                "connected":False,
+            ws_status[group_id] = {
 
-                "count":0,
 
-                "last":0
+                "connected": False,
+
+
+                "count": 0,
+
+
+                "last": 0
 
             }
 
@@ -772,16 +832,17 @@ async def ws_monitor():
 
 
 
-        now=time.time()
+        now = time.time()
 
 
 
-        for gid,status in ws_status.items():
+        for gid, status in ws_status.items():
 
 
-            delay=(
 
-                now-status["last"]
+            delay = (
+
+                now - status["last"]
 
                 if status["last"]
 
@@ -830,6 +891,7 @@ WS-{gid}
 
 
 
+
 # ==================================================
 # WS管理
 # ==================================================
@@ -844,7 +906,7 @@ async def websocket_manager():
 
 
 
-    groups=[]
+    groups = []
 
 
 
@@ -867,11 +929,11 @@ async def websocket_manager():
 
 
 
-    tasks=[]
+    tasks = []
 
 
 
-    for idx,g in enumerate(groups):
+    for idx, group in enumerate(groups):
 
 
         tasks.append(
@@ -880,9 +942,9 @@ async def websocket_manager():
 
                 ws_group(
 
-                    g,
+                    group,
 
-                    idx+1
+                    idx + 1
 
                 )
 
@@ -890,6 +952,8 @@ async def websocket_manager():
 
         )
 
+
+        # 避免同时连接
 
         await asyncio.sleep(5)
 
@@ -936,7 +1000,8 @@ async def main():
 
 
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
 
 
     asyncio.run(main())
