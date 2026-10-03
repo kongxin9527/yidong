@@ -694,13 +694,7 @@ async def ws_group(symbols, group_id):
                 async for msg in ws:
 
 
-                    # 调试原始数据
-
-                    logging.info(
-
-                        f"WS-{group_id} RAW:{msg[:200]}"
-
-                    )
+                    
 
 
 
