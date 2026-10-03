@@ -671,7 +671,9 @@ async def ws_group(symbols,group_id):
 
                 async for msg in ws:
 
-
+                    logging.info(
+                        f"WS-{group_id} RAW:{msg[:200]}"
+                    )
                     data=json.loads(msg)
 
 
