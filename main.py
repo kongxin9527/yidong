@@ -16,7 +16,7 @@ from collections import deque
 
 BINANCE_REST = "https://fapi.binance.com"
 
-WS_URL = "wss://fstream.binance.com/stream"
+WS_URL = "wss://fstream.binance.com/market/stream"
 
 
 # 24小时成交额过滤
