@@ -6,6 +6,6 @@ COPY requirements.txt .
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY main.py .
+COPY test_ws.py .
 
-CMD ["python", "main.py"]
+CMD ["python", "test_ws.py"]
