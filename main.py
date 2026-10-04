@@ -1266,3 +1266,338 @@ async def refresh_pool_task():
             REFRESH_SECONDS
 
         )
+# ==================================================
+# 状态监控
+# ==================================================
+
+async def status_task():
+
+
+    while True:
+
+
+        try:
+
+
+            logging.info(
+
+                "========== 状态 =========="
+
+            )
+
+
+            logging.info(
+
+                f"当前监控币数量:{len(monitor_symbols)}"
+
+            )
+
+
+            logging.info(
+
+                f"价格缓存数量:{len(price_cache)}"
+
+            )
+
+
+
+            for gid,status in ws_status.items():
+
+
+                age=(
+
+                    time.time()
+
+                    -
+
+                    status["last"]
+
+                )
+
+
+                logging.info(
+
+                    f"WS-{gid} "
+
+                    f"消息:{status['messages']} "
+
+                    f"延迟:{age:.1f}s "
+
+                    f"币数量:{len(status['symbols'])}"
+
+                )
+
+
+
+        except Exception as e:
+
+
+            logging.error(
+
+                f"状态错误:{e}"
+
+            )
+
+
+
+        await asyncio.sleep(
+
+            STATUS_INTERVAL
+
+        )
+
+
+
+
+
+
+
+
+
+
+# ==================================================
+# 重建监听
+# ==================================================
+
+async def rebuild_listener():
+
+
+    while True:
+
+
+        await rebuild_event.wait()
+
+
+
+        try:
+
+
+            logging.warning(
+
+                "触发每日WS重建"
+
+            )
+
+
+            symbols=await get_volume_filter()
+
+
+
+            await init_symbols_history(
+
+                symbols
+
+            )
+
+
+            await rebuild_ws(
+
+                symbols
+
+            )
+
+
+            global monitor_symbols
+
+
+            monitor_symbols=set(symbols)
+
+
+
+        except Exception as e:
+
+
+            logging.error(
+
+                f"重建错误:{e}"
+
+            )
+
+
+
+        rebuild_event.clear()
+
+
+
+
+
+
+
+
+
+
+
+# ==================================================
+# 主程序
+# ==================================================
+
+async def main():
+
+
+    logging.info(
+
+        "================================"
+
+    )
+
+
+    logging.info(
+
+        f"Binance异动监控启动 {VERSION}"
+
+    )
+
+
+    logging.info(
+
+        "================================"
+
+    )
+
+
+
+    # Telegram启动测试
+
+    await telegram_test()
+
+
+
+    # 第一次获取500万池
+
+
+    symbols=await get_volume_filter()
+
+
+
+    if not symbols:
+
+
+        logging.error(
+
+            "没有符合成交额条件币种"
+
+        )
+
+        return
+
+
+
+
+
+    global monitor_symbols
+
+
+    monitor_symbols=set(symbols)
+
+
+
+    logging.info(
+
+        f"首次监控数量:{len(symbols)}"
+
+    )
+
+
+
+    # 初始化历史价格
+
+
+    await init_symbols_history(
+
+        symbols
+
+    )
+
+
+
+    # 创建WS
+
+
+    await rebuild_ws(
+
+        symbols
+
+    )
+
+
+
+    # 后台任务
+
+
+    asyncio.create_task(
+
+        refresh_pool_task()
+
+    )
+
+
+    asyncio.create_task(
+
+        daily_rebuild_task()
+
+    )
+
+
+    asyncio.create_task(
+
+        status_task()
+
+    )
+
+
+    asyncio.create_task(
+
+        rebuild_listener()
+
+    )
+
+
+
+    logging.info(
+
+        "所有任务启动完成"
+
+    )
+
+
+
+    # 主循环保持
+
+
+    while True:
+
+
+        await asyncio.sleep(3600)
+
+
+
+
+
+
+
+
+# ==================================================
+# 启动
+# ==================================================
+
+if __name__=="__main__":
+
+
+    try:
+
+
+        asyncio.run(
+
+            main()
+
+        )
+
+
+    except KeyboardInterrupt:
+
+
+        logging.warning(
+
+            "程序停止"
+
+        )
